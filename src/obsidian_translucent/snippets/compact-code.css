@@ -1,0 +1,10 @@
+/*
+ * compact-code.css: tighter line spacing in code blocks (reading view, live preview and source mode).
+ * Font size is not touched. Change --tl-code-line-height to taste (Obsidian's default is 1.6 or so).
+ */
+body { --tl-code-line-height: 1.25; }
+
+.markdown-rendered pre code,
+.markdown-preview-view pre code { line-height: var(--tl-code-line-height); }
+
+.cm-s-obsidian .HyperMD-codeblock { line-height: var(--tl-code-line-height); }

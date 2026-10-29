@@ -1,0 +1,63 @@
+/*
+ * translucent.css: see-through, rounded Obsidian window.
+ *
+ * This is the stylesheet the Obsidian Translucent app injects itself (you do not need to install it).
+ * It needs the transparent window from `obsidian-translucent run`; on a stock opaque window it only dims the colours. Text and icons stay opaque: only background colours get an alpha.
+ *
+ * Knobs (the app reads overrides from ~/.config/obsidian-translucent/translucent.json; or edit them below):
+ *   --tl-alpha   0 = fully clear ... 1 = solid
+ *   --tl-radius  window corner radius; keep equal to `obsidian-translucent run --radius` (default 10)
+ */
+
+/* ---- knobs ---------------------------------------------------------------------------------- */
+body {
+  --tl-alpha: 0.4;
+  --tl-radius: 10px;
+  /* the page box is slightly larger than the window on the right and bottom (seen at 1.1x display
+     scale), so the rounded clip is pulled in by this much. This makes all four corners match. */
+  --tl-clip-right: 2px;
+  --tl-clip-bottom: 1px;
+}
+
+/* ---- page: let the transparent window show through ------------------------------------------ */
+html { background: transparent !important; }
+body { background-color: transparent !important; }
+
+/* ---- colours: one rgba per surface, themes that use these variables just work ---------------- */
+body.theme-dark {
+  --tl-primary: 24, 24, 24;
+  --tl-primary-alt: 30, 30, 30;
+  --tl-secondary: 18, 18, 18;
+}
+body.theme-light {
+  --tl-primary: 252, 252, 252;
+  --tl-primary-alt: 246, 246, 246;
+  --tl-secondary: 240, 240, 240;
+}
+body.theme-dark, body.theme-light {
+  --background-primary: rgba(var(--tl-primary), var(--tl-alpha));
+  --background-primary-alt: rgba(var(--tl-primary-alt), var(--tl-alpha));
+  --background-secondary: rgba(var(--tl-secondary), var(--tl-alpha));
+  --background-secondary-alt: rgba(var(--tl-secondary), var(--tl-alpha));
+  --titlebar-background: rgba(var(--tl-secondary), var(--tl-alpha));
+  --titlebar-background-focused: rgba(var(--tl-secondary), var(--tl-alpha));
+  --status-bar-background: rgba(var(--tl-secondary), var(--tl-alpha));
+  --tab-container-background: transparent;
+}
+
+/* ---- tabs: the active tab's flared "feet" use a solid box-shadow that shows as dark blocks on a
+        translucent background, so drop them ---------------------------------------------------- */
+.workspace-tab-header.is-active::before,
+.workspace-tab-header.is-active::after { display: none !important; }
+
+/* ---- status bar: it floats over scrolling text, so it is nearly solid. Do not add
+        backdrop-filter here: Chromium does not clip it to the rounded corners. ----------------- */
+body.theme-dark .status-bar { background-color: rgba(var(--tl-secondary), 0.92) !important; }
+body.theme-light .status-bar { background-color: rgba(var(--tl-secondary), 0.92) !important; }
+
+/* ---- rounded window corners: the window is transparent, so the page clips itself. One clip on
+        <body> covers everything, including the window buttons and the status bar, which sit in
+        their own layers and ignore a radius set on .app-container. ---------------------------- */
+body {
+  clip-path: inset(0 var(--tl-clip-right) var(--tl-clip-bottom) 0 round var(--tl-radius));
+}
