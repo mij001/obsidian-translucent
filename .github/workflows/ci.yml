@@ -1,0 +1,22 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: make test
+      - run: make lint
+  no-proprietary-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: fail if Obsidian code or binaries were committed
+        run: |
+          bad=$(git ls-files | grep -E '\.asar$|(^|/)(dist|\.local)/|obsidian\.asar|app_split|app_chunks' || true)
+          if [ -n "$bad" ]; then echo "proprietary or generated files committed:"; echo "$bad"; exit 1; fi

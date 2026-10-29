@@ -1,0 +1,11 @@
+# proprietary or generated: never commit
+.local/
+dist/
+*.asar
+__pycache__/
+*.egg-info/
+build/
+.venv/
+
+# stray screenshots
+/*.png

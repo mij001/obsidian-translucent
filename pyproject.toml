@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obsidian-translucent"
+version = "0.1.0"
+description = "Run Obsidian with a transparent, blurred, rounded window on KDE Plasma"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+obsidian-translucent = "obsidian_translucent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+obsidian_translucent = ["snippets/*.css", "assets/*"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
