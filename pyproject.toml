@@ -11,6 +11,10 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/mij001/obsidian-translucent"
+Issues = "https://github.com/mij001/obsidian-translucent/issues"
+
 [project.scripts]
 obsidian-translucent = "obsidian_translucent.cli:main"
 
