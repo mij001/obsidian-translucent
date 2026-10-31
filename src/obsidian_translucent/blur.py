@@ -84,7 +84,6 @@ SHADOW_SIGMA = 13.0  # blur softness in px
 SHADOW_OFFSET = 7  # shadow sits this far below the window, like Breeze
 SHADOW_ALPHA = 0.42
 SHADOW_PAD = (24, 36, 44, 36)  # top, right, bottom, left extents in px
-SHADOW_CORNER_FADE = 18.0  # px: the shadow fades out toward each rectangular window corner (see shadow_tiles)
 
 
 def _edge(distance: float) -> float:
@@ -101,22 +100,14 @@ def shadow_tiles() -> list[tuple[int, int, bytes]]:
     """
     top, right, bottom, left = SHADOW_PAD
 
-    def alpha(fx: float, fy: float, taper: float = 1.0) -> int:
-        return max(0, min(255, round(255 * SHADOW_ALPHA * fx * fy * taper)))
+    def alpha(fx: float, fy: float) -> int:
+        return max(0, min(255, round(255 * SHADOW_ALPHA * fx * fy)))
 
-    def tile(width: int, height: int, fx_of, fy_of, out_x=None, out_y=None) -> tuple[int, int, bytes]:
-        """``out_x``/``out_y`` (corner tiles only) give the true outward distance from the window edges; the shadow
-        fades toward the corner point. The window itself has rounded corners, so the wedge between the curve and the
-        rectangular corner is transparent and cannot be shadowed by KWin; without the fade it shows as a white notch."""
+    def tile(width: int, height: int, fx_of, fy_of) -> tuple[int, int, bytes]:
         out = bytearray()
         for y in range(height):
             for x in range(width):
-                taper = 1.0
-                if out_x is not None:
-                    t = min(1.0, math.hypot(out_x(x), out_y(y)) / SHADOW_CORNER_FADE)
-                    taper = t * t * (3 - 2 * t)  # smoothstep
-                a = alpha(fx_of(x), fy_of(y), taper)
-                out += struct.pack("<I", a << 24)  # black shadow: premultiplied colour is zero
+                out += struct.pack("<I", alpha(fx_of(x), fy_of(y)) << 24)  # black shadow: premultiplied colour is zero
         return width, height, bytes(out)
 
     # distances measured outward from the window edge, at the centre of each pixel
@@ -132,22 +123,16 @@ def shadow_tiles() -> list[tuple[int, int, bytes]]:
     def bottom_d(y):
         return y + 0.5 - SHADOW_OFFSET
 
-    def top_out(y):  # true distance from the window's top edge (no shadow offset)
-        return top - y - 0.5
-
-    def bottom_out(y):
-        return y + 0.5
-
     one = lambda _v: 1.0  # noqa: E731
     return [
         tile(1, top, one, lambda y: _edge(top_d(y))),  # top
-        tile(right, top, lambda x: _edge(right_d(x)), lambda y: _edge(top_d(y)), right_d, top_out),  # top-right
+        tile(right, top, lambda x: _edge(right_d(x)), lambda y: _edge(top_d(y))),  # top-right
         tile(right, 1, lambda x: _edge(right_d(x)), one),  # right
-        tile(right, bottom, lambda x: _edge(right_d(x)), lambda y: _edge(bottom_d(y)), right_d, bottom_out),  # bottom-right
+        tile(right, bottom, lambda x: _edge(right_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-right
         tile(1, bottom, one, lambda y: _edge(bottom_d(y))),  # bottom
-        tile(left, bottom, lambda x: _edge(left_d(x)), lambda y: _edge(bottom_d(y)), left_d, bottom_out),  # bottom-left
+        tile(left, bottom, lambda x: _edge(left_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-left
         tile(left, 1, lambda x: _edge(left_d(x)), one),  # left
-        tile(left, top, lambda x: _edge(left_d(x)), lambda y: _edge(top_d(y)), left_d, top_out),  # top-left
+        tile(left, top, lambda x: _edge(left_d(x)), lambda y: _edge(top_d(y))),  # top-left
     ]
 
 
@@ -334,25 +319,31 @@ def follow(pid: int, radius: int, interval: float = 1.0, icon: bytes | None = No
     import select
 
     known: dict[int, tuple[int, int]] = {}
+    blurred: set[int] = set()
     next_scan = 0.0
     while process_alive(pid):
         now = time.monotonic()
         if now >= next_scan:
             next_scan = now + interval
             for window in map(int, window_ids(pid)):
-                if window not in known:
-                    conn.watch(window)
-                    size = geometry(str(window))
-                    if size and size[0] > 40:
-                        known[window] = size
-                        conn.set_region(window, size[0], size[1], radius)
-                        if icon:
-                            conn.set_window_icon(window, icon)
-                        if shadow:
-                            conn.set_shadow(window)
+                if window in known:
+                    continue
+                conn.watch(window)
+                size = geometry(str(window))
+                if not size or size[0] <= 40:
+                    continue  # helper windows
+                known[window] = size
+                if icon:
+                    conn.set_window_icon(window, icon)
+                if conn.frame_extents(window) is not None:
+                    continue  # Settings and pop-outs draw their own frame and shadow: leave them alone
+                conn.set_region(window, size[0], size[1], radius)
+                blurred.add(window)
+                if shadow:
+                    conn.set_shadow(window)
         select.select([conn.fd], [], [], 0.05)
         for window, size in conn.sizes().items():
-            if window in known and size[0] > 40 and known[window] != size:
+            if window in known and size[0] > 40 and known[window] != size and window in blurred:
                 known[window] = size
                 conn.set_region(window, size[0], size[1], radius)
 

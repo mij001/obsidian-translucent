@@ -83,6 +83,20 @@ Known limit: under XWayland Chromium's own shadow on those windows shows as a fl
 the Settings window. That is stock Chromium behaviour on this platform, not something we draw; setting an X Shape clip and
 `setHasShadow(false)` were both tried and have no effect there.
 
+## Corner wedges, and why the shadow is not drawn in CSS
+
+The page is clipped to a rounded rectangle, so the wedge between each curve and the window's rectangular corner is transparent. KDE's
+shadow is drawn only *outside* the window rectangle, so on a light backdrop each corner showed a white notch. The CSS paints the four
+wedges with `--tl-wedge`, a faint black matching the shadow's strength right next to the corner (`html` radial gradients).
+
+An alternative was tried and dropped: give the window a transparent margin and draw the shadow in CSS (it follows the rounded corners
+exactly). It works visually, but Chromium puts its resize handles at the outer edge of the X window, so the cursor changed to a resize
+cursor up to 32 px outside the visible window, and the margin steals clicks from windows behind. Native borders and the KDE shadow won.
+
+Plasma 6.8 note: KWin 6.8 can draw server-side shadows for windows without one through a window rule ("Window manager draws titlebar,
+frame, and shadows") and a decoration theme that supports a shadow-only style. Automatic shadows for undecorated X11 windows were
+reverted upstream, so they cannot be relied on; we set `_KDE_NET_WM_SHADOW` ourselves, which works on every KDE version.
+
 ## 4. The look (`snippets/translucent.css`, injected by the wrapper)
 
 * backgrounds get an alpha through Obsidian's own variables (`--background-primary`, `--titlebar-background`, ...), so most

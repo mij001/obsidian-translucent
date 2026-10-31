@@ -20,6 +20,8 @@ body {
      scale), so the rounded clip is pulled in by this much. This makes all four corners match. */
   --tl-clip-right: 2px;
   --tl-clip-bottom: 1px;
+  /* faint tint for the four corner wedges (see below); about what KDE's shadow has right next to the corner */
+  --tl-wedge: rgba(0, 0, 0, 0.12);
 }
 
 /* ---- page: let the transparent window show through ------------------------------------------ */
@@ -78,4 +80,20 @@ body.theme-light:not(.is-popout-window) .status-bar { background-color: rgba(var
         their own layers and ignore a radius set on .app-container. ---------------------------- */
 body:not(.is-popout-window) {
   clip-path: inset(0 var(--tl-clip-right) var(--tl-clip-bottom) 0 round var(--tl-radius));
+}
+
+/* ---- corner wedges: the page is clipped to a rounded rectangle, so the wedge between each curve and the window's
+        rectangular corner is transparent, but KDE draws its drop shadow only OUTSIDE the window rectangle. On a light
+        backdrop that leaves a white notch in every corner. Paint the wedge with the shadow's tint instead. ------------- */
+html:has(> body:not(.is-popout-window)) {
+  background-image:
+    radial-gradient(circle at 100% 100%, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
+    radial-gradient(circle at 0 100%, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
+    radial-gradient(circle at 100% 0, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
+    radial-gradient(circle at 0 0, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px));
+  background-repeat: no-repeat;
+  background-size: var(--tl-radius) var(--tl-radius);
+  /* top-left, top-right, bottom-left, bottom-right; right/bottom follow the clip inset */
+  background-position: left top, right var(--tl-clip-right) top, left bottom var(--tl-clip-bottom),
+    right var(--tl-clip-right) bottom var(--tl-clip-bottom);
 }
