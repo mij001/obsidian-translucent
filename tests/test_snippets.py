@@ -16,6 +16,12 @@ class Snippets(unittest.TestCase):
         for knob in ("--tl-alpha", "--tl-radius", "--tl-clip-right", "--tl-clip-bottom"):
             self.assertIn(knob, text)
 
+    def test_popups_are_nearly_solid(self):
+        text = self.css("translucent")
+        for var in ("--menu-background", "--suggestion-background", "--modal-background", "--tooltip-background", "--prompt-background"):
+            self.assertIn(var, text)
+        self.assertIn("--tl-popup: rgba(var(--tl-secondary), 0.97)", text)
+
     def test_default_radius_matches_cli(self):
         from obsidian_translucent import cli
 

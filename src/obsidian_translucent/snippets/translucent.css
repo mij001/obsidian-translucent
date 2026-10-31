@@ -45,6 +45,21 @@ body.theme-dark, body.theme-light {
   --tab-container-background: transparent;
 }
 
+/* ---- popups: menus, suggestions, hover previews, tooltips and dialogs sit on top of text, so they must be
+        nearly solid or the text underneath shows through and overlaps their entries. ------------------- */
+body.theme-dark, body.theme-light {
+  --tl-popup: rgba(var(--tl-secondary), 0.97);
+  --menu-background: var(--tl-popup);
+  --suggestion-background: var(--tl-popup);
+  --prompt-background: var(--tl-popup);
+  --modal-background: var(--tl-popup);
+  --tooltip-background: var(--tl-popup);
+  --popover-background: var(--tl-popup);
+}
+.cm-tooltip, .popover, .menu, .suggestion-container, .prompt, .modal, .tooltip {
+  background-color: var(--tl-popup) !important;
+}
+
 /* ---- tabs: the active tab's flared "feet" use a solid box-shadow that shows as dark blocks on a
         translucent background, so drop them ---------------------------------------------------- */
 .workspace-tab-header.is-active::before,
