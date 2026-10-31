@@ -16,6 +16,28 @@ class Snippets(unittest.TestCase):
         for knob in ("--tl-alpha", "--tl-radius", "--tl-clip-right", "--tl-clip-bottom"):
             self.assertIn(knob, text)
 
+    def test_every_rule_skips_opaque_popout_windows(self):
+        """Settings and other pop-outs are opaque windows; rounding/clip/alpha there leaves a dark rectangle."""
+        import re
+
+        text = re.sub(r"/\*.*?\*/", "", self.css("translucent"), flags=re.S)
+        for selector in re.findall(r"([^{}]+)\{", text):
+            selector = selector.strip()
+            if selector.startswith("html") or selector == "body" or ".workspace-tab-header" in selector:
+                continue  # knobs on plain body, html background and the harmless tab-feet rule
+            parts, depth, current = [], 0, ""
+            for ch in selector:  # split on commas outside parentheses, so :is(a, b) stays one selector
+                depth += ch == "("
+                depth -= ch == ")"
+                if ch == "," and depth == 0:
+                    parts.append(current)
+                    current = ""
+                else:
+                    current += ch
+            parts.append(current)
+            for part in parts:
+                self.assertIn("is-popout-window", part, f"rule not scoped away from pop-outs: {part.strip()}")
+
     def test_popups_are_nearly_solid(self):
         text = self.css("translucent")
         for var in ("--menu-background", "--suggestion-background", "--modal-background", "--tooltip-background", "--prompt-background"):
