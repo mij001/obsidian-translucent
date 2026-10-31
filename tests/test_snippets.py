@@ -13,7 +13,7 @@ class Snippets(unittest.TestCase):
 
     def test_documented_knobs_exist(self):
         text = self.css("translucent")
-        for knob in ("--tl-alpha", "--tl-radius", "--tl-clip-right", "--tl-clip-bottom", "--tl-wedge"):
+        for knob in ("--tl-alpha", "--tl-radius", "--tl-clip-right", "--tl-clip-bottom", "--tl-wedge-top", "--tl-wedge-bottom"):
             self.assertIn(knob, text)
 
     def test_every_rule_skips_opaque_popout_windows(self):

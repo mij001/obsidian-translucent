@@ -20,8 +20,11 @@ body {
      scale), so the rounded clip is pulled in by this much. This makes all four corners match. */
   --tl-clip-right: 2px;
   --tl-clip-bottom: 1px;
-  /* faint tint for the four corner wedges (see below); about what KDE's shadow has right next to the corner */
-  --tl-wedge: rgba(0, 0, 0, 0.12);
+  /* corner wedges (see below): the shadow's strength right at the curve, top and bottom (KDE's shadow is offset
+     downward, so the bottom corners are darker), and how much of it is left at the outer corner point */
+  --tl-wedge-top: 0.12;
+  --tl-wedge-bottom: 0.26;
+  --tl-wedge-fade: 0.6;
 }
 
 /* ---- page: let the transparent window show through ------------------------------------------ */
@@ -84,16 +87,19 @@ body:not(.is-popout-window) {
 
 /* ---- corner wedges: the page is clipped to a rounded rectangle, so the wedge between each curve and the window's
         rectangular corner is transparent, but KDE draws its drop shadow only OUTSIDE the window rectangle. On a light
-        backdrop that leaves a white notch in every corner. Paint the wedge with the shadow's tint instead. ------------- */
+        backdrop that leaves a white notch in every corner. Paint each wedge the way the shadow would continue under the
+        curve: as strong as the shadow next to it at the curve, fading outward to the corner point (1.414 x radius). ---- */
 html:has(> body:not(.is-popout-window)) {
+  --tl-r: var(--tl-radius);
   background-image:
-    radial-gradient(circle at 100% 100%, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
-    radial-gradient(circle at 0 100%, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
-    radial-gradient(circle at 100% 0, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px)),
-    radial-gradient(circle at 0 0, transparent calc(var(--tl-radius) - 0.7px), var(--tl-wedge) calc(var(--tl-radius) + 0.3px));
+    /* top-left, top-right, bottom-left, bottom-right */
+    radial-gradient(circle at 100% 100%, transparent calc(var(--tl-r) - 0.7px), rgb(0 0 0 / var(--tl-wedge-top)) calc(var(--tl-r) + 0.3px), rgb(0 0 0 / calc(var(--tl-wedge-top) * var(--tl-wedge-fade))) calc(var(--tl-r) * 1.42)),
+    radial-gradient(circle at 0 100%, transparent calc(var(--tl-r) - 0.7px), rgb(0 0 0 / var(--tl-wedge-top)) calc(var(--tl-r) + 0.3px), rgb(0 0 0 / calc(var(--tl-wedge-top) * var(--tl-wedge-fade))) calc(var(--tl-r) * 1.42)),
+    radial-gradient(circle at 100% 0, transparent calc(var(--tl-r) - 0.7px), rgb(0 0 0 / var(--tl-wedge-bottom)) calc(var(--tl-r) + 0.3px), rgb(0 0 0 / calc(var(--tl-wedge-bottom) * var(--tl-wedge-fade))) calc(var(--tl-r) * 1.42)),
+    radial-gradient(circle at 0 0, transparent calc(var(--tl-r) - 0.7px), rgb(0 0 0 / var(--tl-wedge-bottom)) calc(var(--tl-r) + 0.3px), rgb(0 0 0 / calc(var(--tl-wedge-bottom) * var(--tl-wedge-fade))) calc(var(--tl-r) * 1.42));
   background-repeat: no-repeat;
   background-size: var(--tl-radius) var(--tl-radius);
-  /* top-left, top-right, bottom-left, bottom-right; right/bottom follow the clip inset */
+  /* right/bottom follow the clip inset */
   background-position: left top, right var(--tl-clip-right) top, left bottom var(--tl-clip-bottom),
     right var(--tl-clip-right) bottom var(--tl-clip-bottom);
 }
