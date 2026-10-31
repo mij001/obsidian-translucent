@@ -71,6 +71,18 @@ left, top-left) and four padding values. `blur.shadow_tiles()` computes them (a 
 separable, so every tile is a product of two 1-D profiles), the follower uploads them once as 32-bit pixmaps and points every
 window at them. KWin hides the shadow when the window is maximized. Constants: `SHADOW_SIGMA`, `SHADOW_OFFSET`, `SHADOW_ALPHA`, `SHADOW_PAD`.
 
+## Which windows get blur and shadow
+
+Only the transparent main window. Obsidian's opaque pop-outs (Settings, detached panes) are drawn by Chromium with its own
+client-side decoration: rounded corners and a shadow, with the content inset from the X window by a margin it advertises in
+`_GTK_FRAME_EXTENTS`. Blurring the whole X window there paints a flat gray box over Chromium's shadow, and our shadow would double
+it, so the follower skips any window with that property (`XConnection.frame_extents`), and only gives it the icon. The CSS skips
+them too (`:not(.is-popout-window)`), because rounding or alpha on an opaque window leaves a dark rectangle.
+
+Known limit: under XWayland Chromium's own shadow on those windows shows as a flat dark strip along the right and bottom edge of
+the Settings window. That is stock Chromium behaviour on this platform, not something we draw; setting an X Shape clip and
+`setHasShadow(false)` were both tried and have no effect there.
+
 ## 4. The look (`snippets/translucent.css`, injected by the wrapper)
 
 * backgrounds get an alpha through Obsidian's own variables (`--background-primary`, `--titlebar-background`, ...), so most

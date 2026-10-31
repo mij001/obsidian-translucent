@@ -67,6 +67,15 @@ class ShadowTiles(unittest.TestCase):
         self.assertEqual(self.alpha(right_tile, right - 1, 0), 0)  # fully faded at the outer edge
         self.assertGreater(self.alpha(bottom_tile, 0, 0), self.alpha(top_tile, 0, top - 1))  # offset downward
 
+    def test_shadow_fades_out_toward_the_window_corner(self):
+        """The window has rounded corners, so the corner wedge cannot be shadowed; the shadow must taper there."""
+        tiles = blur.shadow_tiles()
+        br, bottom_edge = tiles[3], tiles[4]
+        near_corner = self.alpha(br, 0, 0)  # the pixel touching the window's bottom-right corner
+        along_edge = self.alpha(bottom_edge, 0, 0)  # same distance below the edge, but far from any corner
+        self.assertLess(near_corner, along_edge)
+        self.assertLess(near_corner, 10)  # almost invisible right at the corner
+
     def test_colour_is_black_premultiplied(self):
         for _w, _h, data in blur.shadow_tiles():
             self.assertTrue(all(data[i] == data[i + 1] == data[i + 2] == 0 for i in range(0, len(data), 4)))

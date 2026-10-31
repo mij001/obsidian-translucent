@@ -84,6 +84,7 @@ SHADOW_SIGMA = 13.0  # blur softness in px
 SHADOW_OFFSET = 7  # shadow sits this far below the window, like Breeze
 SHADOW_ALPHA = 0.42
 SHADOW_PAD = (24, 36, 44, 36)  # top, right, bottom, left extents in px
+SHADOW_CORNER_FADE = 18.0  # px: the shadow fades out toward each rectangular window corner (see shadow_tiles)
 
 
 def _edge(distance: float) -> float:
@@ -100,14 +101,21 @@ def shadow_tiles() -> list[tuple[int, int, bytes]]:
     """
     top, right, bottom, left = SHADOW_PAD
 
-    def alpha(fx: float, fy: float) -> int:
-        return max(0, min(255, round(255 * SHADOW_ALPHA * fx * fy)))
+    def alpha(fx: float, fy: float, taper: float = 1.0) -> int:
+        return max(0, min(255, round(255 * SHADOW_ALPHA * fx * fy * taper)))
 
-    def tile(width: int, height: int, fx_of, fy_of) -> tuple[int, int, bytes]:
+    def tile(width: int, height: int, fx_of, fy_of, out_x=None, out_y=None) -> tuple[int, int, bytes]:
+        """``out_x``/``out_y`` (corner tiles only) give the true outward distance from the window edges; the shadow
+        fades toward the corner point. The window itself has rounded corners, so the wedge between the curve and the
+        rectangular corner is transparent and cannot be shadowed by KWin; without the fade it shows as a white notch."""
         out = bytearray()
         for y in range(height):
             for x in range(width):
-                a = alpha(fx_of(x), fy_of(y))
+                taper = 1.0
+                if out_x is not None:
+                    t = min(1.0, math.hypot(out_x(x), out_y(y)) / SHADOW_CORNER_FADE)
+                    taper = t * t * (3 - 2 * t)  # smoothstep
+                a = alpha(fx_of(x), fy_of(y), taper)
                 out += struct.pack("<I", a << 24)  # black shadow: premultiplied colour is zero
         return width, height, bytes(out)
 
@@ -124,16 +132,22 @@ def shadow_tiles() -> list[tuple[int, int, bytes]]:
     def bottom_d(y):
         return y + 0.5 - SHADOW_OFFSET
 
+    def top_out(y):  # true distance from the window's top edge (no shadow offset)
+        return top - y - 0.5
+
+    def bottom_out(y):
+        return y + 0.5
+
     one = lambda _v: 1.0  # noqa: E731
     return [
         tile(1, top, one, lambda y: _edge(top_d(y))),  # top
-        tile(right, top, lambda x: _edge(right_d(x)), lambda y: _edge(top_d(y))),  # top-right
+        tile(right, top, lambda x: _edge(right_d(x)), lambda y: _edge(top_d(y)), right_d, top_out),  # top-right
         tile(right, 1, lambda x: _edge(right_d(x)), one),  # right
-        tile(right, bottom, lambda x: _edge(right_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-right
+        tile(right, bottom, lambda x: _edge(right_d(x)), lambda y: _edge(bottom_d(y)), right_d, bottom_out),  # bottom-right
         tile(1, bottom, one, lambda y: _edge(bottom_d(y))),  # bottom
-        tile(left, bottom, lambda x: _edge(left_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-left
+        tile(left, bottom, lambda x: _edge(left_d(x)), lambda y: _edge(bottom_d(y)), left_d, bottom_out),  # bottom-left
         tile(left, 1, lambda x: _edge(left_d(x)), one),  # left
-        tile(left, top, lambda x: _edge(left_d(x)), lambda y: _edge(top_d(y))),  # top-left
+        tile(left, top, lambda x: _edge(left_d(x)), lambda y: _edge(top_d(y)), left_d, top_out),  # top-left
     ]
 
 
@@ -254,6 +268,30 @@ class XConnection:
         name = b"obsidian-translucent"
         self.x.XChangeProperty(self.dpy, window, desktop, utf8, 8, 0, name, len(name))
         self.x.XFlush(self.dpy)
+
+    def frame_extents(self, window: int) -> tuple[int, int, int, int] | None:
+        """``_GTK_FRAME_EXTENTS`` as (left, right, top, bottom), or None if the window does not have the property.
+
+        Obsidian's opaque pop-out windows (Settings and detached panes) have it: Chromium draws its own rounded
+        corners and shadow, with the content inset from the X window by this margin. Our transparent main window has none.
+        """
+        atom = self.x.XInternAtom(self.dpy, b"_GTK_FRAME_EXTENTS", 1)  # only_if_exists: 0 means it was never set
+        if not atom:
+            return None
+        actual_type, actual_format = ctypes.c_ulong(), ctypes.c_int()
+        nitems, after, prop = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.POINTER(ctypes.c_long)()
+        self.x.XGetWindowProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_long, ctypes.c_long, ctypes.c_int, ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.POINTER(ctypes.c_long)),
+        ]
+        self.x.XGetWindowProperty(self.dpy, window, atom, 0, 4, 0, 0, ctypes.byref(actual_type), ctypes.byref(actual_format),
+                                  ctypes.byref(nitems), ctypes.byref(after), ctypes.byref(prop))
+        result = tuple(int(prop[k]) for k in range(4)) if nitems.value >= 4 and prop else None
+        if prop:
+            self.x.XFree.argtypes = [ctypes.c_void_p]
+            self.x.XFree(prop)
+        return result
 
     def watch(self, window: int) -> None:
         self.x.XSelectInput(self.dpy, window, _STRUCTURE_NOTIFY)
