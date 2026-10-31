@@ -63,11 +63,21 @@ therefore sets `_NET_WM_ICON` itself (and `_KDE_NET_WM_DESKTOP_FILE`) on every n
 32-bit words, `width height ARGB...` for 32, 48 and 128 px, generated from `assets/icon.svg` by `tools/make-icons.py` (dev-time,
 needs `rsvg-convert` and Pillow). The menu entry installs the same logo into the user's `hicolor` icon theme.
 
+## Drop shadow
+
+A frameless transparent window gets no shadow from KWin by itself, and CSS cannot draw one outside the window bounds. KWin draws a
+shadow for X11 windows that carry `_KDE_NET_WM_SHADOW`: eight pixmaps (top, top-right, right, bottom-right, bottom, bottom-left,
+left, top-left) and four padding values. `blur.shadow_tiles()` computes them (a Gaussian-blurred rectangle moved a few pixels down;
+separable, so every tile is a product of two 1-D profiles), the follower uploads them once as 32-bit pixmaps and points every
+window at them. KWin hides the shadow when the window is maximized. Constants: `SHADOW_SIGMA`, `SHADOW_OFFSET`, `SHADOW_ALPHA`, `SHADOW_PAD`.
+
 ## 4. The look (`snippets/translucent.css`, injected by the wrapper)
 
 * backgrounds get an alpha through Obsidian's own variables (`--background-primary`, `--titlebar-background`, ...), so most
   themes work without edits; text stays opaque;
 * the active tab's curved "feet" use a solid box-shadow that shows as dark squares on a translucent bar, so they are hidden;
+* menus, suggestions, hover previews, tooltips and dialogs get a 97% opaque fill through Obsidian's `--menu-background` family of
+  variables; at the window alpha they let the note text show through and overlap their entries;
 * the status bar floats over scrolling text, so it gets a nearly solid fill. `backdrop-filter` is avoided there because
   Chromium does not clip it to rounded corners;
 * rounded corners come from a single `clip-path` on `<body>`. A radius on `.app-container` is not enough: the window-button

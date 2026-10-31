@@ -44,5 +44,33 @@ class BlurRegion(unittest.TestCase):
             blur.region(1000, 700, blur.MAX_RADIUS + 1)
 
 
+class ShadowTiles(unittest.TestCase):
+    def alpha(self, tile, x, y):
+        import struct
+
+        w, _h, data = tile
+        return struct.unpack_from("<I", data, (y * w + x) * 4)[0] >> 24
+
+    def test_eight_tiles_with_the_padding_sizes(self):
+        tiles = blur.shadow_tiles()
+        top, right, bottom, left = blur.SHADOW_PAD
+        self.assertEqual([(w, h) for w, h, _ in tiles],
+                         [(1, top), (right, top), (right, 1), (right, bottom), (1, bottom), (left, bottom), (left, 1), (left, top)])
+        for w, h, data in tiles:
+            self.assertEqual(len(data), w * h * 4)
+
+    def test_fades_outward_and_is_stronger_below_than_above(self):
+        tiles = blur.shadow_tiles()
+        top, right, bottom, left = blur.SHADOW_PAD
+        right_tile, top_tile, bottom_tile = tiles[2], tiles[0], tiles[4]
+        self.assertGreater(self.alpha(right_tile, 0, 0), self.alpha(right_tile, right - 1, 0))  # near > far
+        self.assertEqual(self.alpha(right_tile, right - 1, 0), 0)  # fully faded at the outer edge
+        self.assertGreater(self.alpha(bottom_tile, 0, 0), self.alpha(top_tile, 0, top - 1))  # offset downward
+
+    def test_colour_is_black_premultiplied(self):
+        for _w, _h, data in blur.shadow_tiles():
+            self.assertTrue(all(data[i] == data[i + 1] == data[i + 2] == 0 for i in range(0, len(data), 4)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-"""X11 (XWayland) window helpers: KDE background blur shaped to match rounded corners, and the window icon.
+"""X11 (XWayland) window helpers: KDE background blur shaped to match rounded corners, the window icon and a drop shadow.
 
 KWin reads the ``_KDE_NET_WM_BLUR_BEHIND_REGION`` property: a list of ``x y w h`` rectangles in window
 coordinates. xprop accepts at most 64 values, so a rounded rectangle is approximated with one band of
@@ -75,6 +75,68 @@ def process_alive(pid: int) -> bool:
     return True
 
 
+# ---- drop shadow ----------------------------------------------------------------------------------
+# A frameless transparent window gets no shadow from KWin by itself. KWin draws one from the
+# _KDE_NET_WM_SHADOW property: eight pixmaps (top, top-right, right, bottom-right, bottom, bottom-left,
+# left, top-left) plus the four padding values (top, right, bottom, left). KWin hides it when maximized.
+
+SHADOW_SIGMA = 13.0  # blur softness in px
+SHADOW_OFFSET = 7  # shadow sits this far below the window, like Breeze
+SHADOW_ALPHA = 0.42
+SHADOW_PAD = (24, 36, 44, 36)  # top, right, bottom, left extents in px
+
+
+def _edge(distance: float) -> float:
+    """Gaussian-blurred straight edge: 0.5 at the edge, falling to 0 outward. ``distance`` is outward-positive."""
+    return 0.5 * (1.0 - math.erf(distance / (SHADOW_SIGMA * math.sqrt(2))))
+
+
+def shadow_tiles() -> list[tuple[int, int, bytes]]:
+    """The eight shadow tiles as ``(width, height, premultiplied ARGB32 little-endian bytes)``.
+
+    Edge tiles are one pixel thick along the edge (KWin stretches them); corner tiles are pad x pad.
+    The shadow shape is the window rectangle moved down by SHADOW_OFFSET and blurred, which is separable,
+    so every tile is a product of two one-dimensional profiles.
+    """
+    top, right, bottom, left = SHADOW_PAD
+
+    def alpha(fx: float, fy: float) -> int:
+        return max(0, min(255, round(255 * SHADOW_ALPHA * fx * fy)))
+
+    def tile(width: int, height: int, fx_of, fy_of) -> tuple[int, int, bytes]:
+        out = bytearray()
+        for y in range(height):
+            for x in range(width):
+                a = alpha(fx_of(x), fy_of(y))
+                out += struct.pack("<I", a << 24)  # black shadow: premultiplied colour is zero
+        return width, height, bytes(out)
+
+    # distances measured outward from the window edge, at the centre of each pixel
+    def left_d(x):  # x in [0, left): distance from the left edge going outward
+        return left - x - 0.5
+
+    def right_d(x):
+        return x + 0.5
+
+    def top_d(y):  # shadow is moved down, so the top edge of the shadow is SHADOW_OFFSET inside
+        return top - y - 0.5 + SHADOW_OFFSET
+
+    def bottom_d(y):
+        return y + 0.5 - SHADOW_OFFSET
+
+    one = lambda _v: 1.0  # noqa: E731
+    return [
+        tile(1, top, one, lambda y: _edge(top_d(y))),  # top
+        tile(right, top, lambda x: _edge(right_d(x)), lambda y: _edge(top_d(y))),  # top-right
+        tile(right, 1, lambda x: _edge(right_d(x)), one),  # right
+        tile(right, bottom, lambda x: _edge(right_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-right
+        tile(1, bottom, one, lambda y: _edge(bottom_d(y))),  # bottom
+        tile(left, bottom, lambda x: _edge(left_d(x)), lambda y: _edge(bottom_d(y))),  # bottom-left
+        tile(left, 1, lambda x: _edge(left_d(x)), one),  # left
+        tile(left, top, lambda x: _edge(left_d(x)), lambda y: _edge(top_d(y))),  # top-left
+    ]
+
+
 # ---- event driven path: a direct Xlib connection through ctypes (no dependencies) -------------------
 
 _STRUCTURE_NOTIFY = 1 << 17
@@ -122,6 +184,61 @@ class XConnection:
         self.atom = self.x.XInternAtom(self.dpy, PROPERTY.encode(), 0)
         self.fd = self.x.XConnectionNumber(self.dpy)
 
+    def _create_pixmaps(self) -> list[int]:
+        """Upload the shadow tiles to the X server as 32-bit pixmaps. Done once per connection."""
+
+        class VisualInfo(ctypes.Structure):
+            _fields_ = [
+                ("visual", ctypes.c_void_p), ("visualid", ctypes.c_ulong), ("screen", ctypes.c_int), ("depth", ctypes.c_int),
+                ("klass", ctypes.c_int), ("red_mask", ctypes.c_ulong), ("green_mask", ctypes.c_ulong),
+                ("blue_mask", ctypes.c_ulong), ("colormap_size", ctypes.c_int), ("bits_per_rgb", ctypes.c_int),
+            ]
+
+        x, dpy = self.x, self.dpy
+        x.XDefaultScreen.argtypes = [ctypes.c_void_p]
+        x.XRootWindow.restype = ctypes.c_ulong
+        x.XRootWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XMatchVisualInfo.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(VisualInfo)]
+        x.XCreatePixmap.restype = ctypes.c_ulong
+        x.XCreatePixmap.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]
+        x.XCreateGC.restype = ctypes.c_void_p
+        x.XCreateGC.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+        x.XCreateImage.restype = ctypes.c_void_p
+        x.XCreateImage.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+            ctypes.c_uint, ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ]
+        x.XPutImage.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_uint, ctypes.c_uint,
+        ]
+        screen = x.XDefaultScreen(dpy)
+        root = x.XRootWindow(dpy, screen)
+        info = VisualInfo()
+        if not x.XMatchVisualInfo(dpy, screen, 32, 4, ctypes.byref(info)):  # 4 = TrueColor
+            raise RuntimeError("no 32-bit visual for the shadow")
+        ids = []
+        self._keep = []  # XCreateImage does not copy the data; keep it alive
+        for width, height, data in shadow_tiles():
+            pixmap = x.XCreatePixmap(dpy, root, width, height, 32)
+            gc = x.XCreateGC(dpy, pixmap, 0, None)
+            buffer = ctypes.create_string_buffer(data, len(data))
+            self._keep.append(buffer)
+            image = x.XCreateImage(dpy, info.visual, 32, 2, 0, buffer, width, height, 32, width * 4)  # 2 = ZPixmap
+            x.XPutImage(dpy, pixmap, gc, image, 0, 0, 0, 0, width, height)
+            ids.append(pixmap)
+        return ids
+
+    def set_shadow(self, window: int) -> None:
+        """Give the window KWin's drop shadow (``_KDE_NET_WM_SHADOW``)."""
+        if getattr(self, "_shadow_ids", None) is None:
+            self._shadow_ids = self._create_pixmaps()
+        values = [*self._shadow_ids, *SHADOW_PAD]
+        data = (ctypes.c_long * len(values))(*values)
+        atom = self.x.XInternAtom(self.dpy, b"_KDE_NET_WM_SHADOW", 0)
+        self.x.XChangeProperty(self.dpy, window, atom, _XA_CARDINAL, 32, 0, data, len(values))
+        self.x.XFlush(self.dpy)
+
     def set_window_icon(self, window: int, icon: bytes) -> None:
         """Set ``_NET_WM_ICON`` (the icon taskbars and switchers show) and tell KDE which desktop file this is.
 
@@ -159,9 +276,10 @@ class XConnection:
         return latest
 
 
-def follow(pid: int, radius: int, interval: float = 1.0, icon: bytes | None = None) -> None:
+def follow(pid: int, radius: int, interval: float = 1.0, icon: bytes | None = None, shadow: bool = True) -> None:
     """Keep the blur region of every window of ``pid`` matched to its size until the process exits.
-    If ``icon`` (``icon.wmicon`` data) is given, each new window also gets it as its window icon.
+    If ``icon`` (``icon.wmicon`` data) is given, each new window also gets it as its window icon, and with
+    ``shadow`` (default) a KDE drop shadow.
 
     Resizes are picked up the moment the X server reports them. Window discovery (new windows such as
     pop-outs) runs once per ``interval``. Falls back to slower polling if Xlib is unavailable.
@@ -192,6 +310,8 @@ def follow(pid: int, radius: int, interval: float = 1.0, icon: bytes | None = No
                         conn.set_region(window, size[0], size[1], radius)
                         if icon:
                             conn.set_window_icon(window, icon)
+                        if shadow:
+                            conn.set_shadow(window)
         select.select([conn.fd], [], [], 0.05)
         for window, size in conn.sizes().items():
             if window in known and size[0] > 40 and known[window] != size:
